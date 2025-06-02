@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Facial Recognition Demo</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+        background-color: #f4f4f9;
+      }
+      .container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin-bottom: 30px;
+        width: 90%;
+        max-width: 700px;
+      }
+      video {
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        max-width: 100%;
+      }
+      canvas {
+        display: none;
+      } /* Keep canvas for capturing, but don't show it */
+      .controls {
+        margin-top: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        align-items: center;
+        width: 100%;
+      }
+      input[type="text"] {
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+        width: 80%;
+        max-width: 300px;
+      }
+      button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        width: 80%;
+        max-width: 300px;
+      }
+
+      #captureOnboard,
+      #captureRecognize {
+        background-color: #6c757d;
+        color: white;
+      }
+      #submitOnboard,
+      #submitRecognize {
+        background-color: #007bff;
+        color: white;
+      }
+      #submitOnboard:disabled,
+      #submitRecognize:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+
+      .message {
+        margin-top: 20px;
+        font-weight: bold;
+        text-align: center;
+      }
+      .success {
+        color: green;
+      }
+      .error {
+        color: red;
+      }
+      .info {
+        color: blue;
+      }
+      hr {
+        width: 80%;
+        margin: 30px 0;
+        border: 0;
+        border-top: 1px solid #eee;
+      }
+    </style>
+  </head>
+  <body>
+    <video
+      id="video"
+      width="640"
+      height="480"
+      autoplay
+      style="margin-bottom: 20px"
+    ></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
+
+    <!-- Onboarding Section -->
+    <div class="container">
+      <h2>Onboard New User</h2>
+      <div class="controls">
+        <button id="captureOnboard">1. Capture Photo for Onboarding</button>
+        <input type="text" id="nameOnboard" placeholder="Enter your name" />
+        <button id="submitOnboard" disabled>2. Submit Onboarding Data</button>
+      </div>
+      <div id="messageOnboard" class="message"></div>
+    </div>
+
+    <hr />
+
+    <!-- Recognition Section -->
+    <div class="container">
+      <h2>Recognize Face</h2>
+      <div class="controls">
+        <button id="captureRecognize">1. Capture Photo for Recognition</button>
+        <button id="submitRecognize" disabled>2. Attempt Recognition</button>
+      </div>
+      <div id="messageRecognize" class="message"></div>
+    </div>
+
+    <script>
+      const video = document.getElementById("video");
+      const canvas = document.getElementById("canvas");
+      const context = canvas.getContext("2d");
+
+      // Onboarding elements
+      const captureOnboardButton = document.getElementById("captureOnboard");
+      const submitOnboardButton = document.getElementById("submitOnboard");
+      const nameOnboardInput = document.getElementById("nameOnboard");
+      const messageOnboardDiv = document.getElementById("messageOnboard");
+      let capturedImageOnboardData = null;
+
+      // Recognition elements
+      const captureRecognizeButton =
+        document.getElementById("captureRecognize");
+      const submitRecognizeButton = document.getElementById("submitRecognize");
+      const messageRecognizeDiv = document.getElementById("messageRecognize");
+      let capturedImageRecognizeData = null;
+
+      // 1. Access Webcam
+      async function setupWebcam() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+          });
+          video.srcObject = stream;
+        } catch (err) {
+          console.error("Error accessing webcam: ", err);
+          messageOnboardDiv.textContent = "Error: Could not access webcam.";
+          messageOnboardDiv.className = "message error";
+          messageRecognizeDiv.textContent = "Error: Could not access webcam.";
+          messageRecognizeDiv.className = "message error";
+        }
+      }
+      setupWebcam();
+
+      // --- Onboarding Logic ---
+      captureOnboardButton.addEventListener("click", () => {
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        capturedImageOnboardData = canvas.toDataURL("image/jpeg");
+        submitOnboardButton.disabled = false;
+        messageOnboardDiv.textContent =
+          "Photo captured for onboarding! Enter name and submit.";
+        messageOnboardDiv.className = "message info";
+      });
+
+      submitOnboardButton.addEventListener("click", async () => {
+        const name = nameOnboardInput.value.trim();
+        if (!name) {
+          alert("Please enter a name for onboarding.");
+          return;
+        }
+        if (!capturedImageOnboardData) {
+          alert("Please capture a photo for onboarding first.");
+          return;
+        }
+
+        messageOnboardDiv.textContent = "Submitting onboarding data...";
+        messageOnboardDiv.className = "message info";
+
+        try {
+          // Use the new endpoint /onboard_user
+          const response = await fetch("/onboard_user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: name,
+              image_data: capturedImageOnboardData,
+            }),
+          });
+          const result = await response.json();
+
+          if (response.ok) {
+            messageOnboardDiv.textContent = `Success: ${result.message}`;
+            messageOnboardDiv.className = "message success";
+          } else {
+            messageOnboardDiv.textContent = `Error: ${
+              result.detail || JSON.stringify(result)
+            }`;
+            messageOnboardDiv.className = "message error";
+          }
+        } catch (error) {
+          console.error("Error submitting onboarding data:", error);
+          messageOnboardDiv.textContent =
+            "A network error occurred during onboarding.";
+          messageOnboardDiv.className = "message error";
+        }
+        capturedImageOnboardData = null; // Reset
+        submitOnboardButton.disabled = true;
+      });
+
+      // --- Recognition Logic ---
+      captureRecognizeButton.addEventListener("click", () => {
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        capturedImageRecognizeData = canvas.toDataURL("image/jpeg");
+        submitRecognizeButton.disabled = false;
+        messageRecognizeDiv.textContent =
+          'Photo captured for recognition! Click "Attempt Recognition".';
+        messageRecognizeDiv.className = "message info";
+      });
+
+      submitRecognizeButton.addEventListener("click", async () => {
+        if (!capturedImageRecognizeData) {
+          alert("Please capture a photo for recognition first.");
+          return;
+        }
+
+        messageRecognizeDiv.textContent = "Attempting recognition...";
+        messageRecognizeDiv.className = "message info";
+
+        try {
+          const response = await fetch("/recognize", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image_data: capturedImageRecognizeData }),
+          });
+          const result = await response.json(); // Expecting RecognitionResponse model
+
+          if (response.ok) {
+            if (result.status === "success") {
+              messageRecognizeDiv.textContent = `Recognized: ${
+                result.recognized_as
+              } (Distance: ${result.distance.toFixed(4)})`;
+              messageRecognizeDiv.className = "message success";
+            } else if (result.status === "no_match") {
+              messageRecognizeDiv.textContent = `No clear match. Closest was ${
+                result.recognized_as
+              } (Distance: ${result.distance.toFixed(
+                4
+              )}). Threshold is ${RECOGNITION_THRESHOLD}.`;
+              messageRecognizeDiv.className = "message info";
+            } else {
+              // error status from backend
+              messageRecognizeDiv.textContent = `Recognition Info: ${
+                result.message || "Unknown error during recognition."
+              }`;
+              messageRecognizeDiv.className = "message error";
+            }
+          } else {
+            // HTTP error
+            messageRecognizeDiv.textContent = `Error: ${
+              result.detail || JSON.stringify(result)
+            }`;
+            messageRecognizeDiv.className = "message error";
+          }
+        } catch (error) {
+          console.error("Error submitting for recognition:", error);
+          messageRecognizeDiv.textContent =
+            "A network error occurred during recognition.";
+          messageRecognizeDiv.className = "message error";
+        }
+        capturedImageRecognizeData = null; // Reset
+        submitRecognizeButton.disabled = true;
+      });
+    </script>
+  </body>
+</html>
